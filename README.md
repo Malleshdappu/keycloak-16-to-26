@@ -152,6 +152,34 @@ kubectl exec -n keycloak26 keycloak-0 -- /opt/keycloak/bin/kc.sh --version
 ```text
 Keycloak 26.7.4
 ```
+### 2.4 Copy existing Keycloak client secrets
+
+Copy the existing `keycloak-client-secrets` secret from the
+`keycloak` namespace to the new `keycloak26` namespace.
+
+```bash
+kubectl get secret keycloak-client-secrets -n keycloak -o json \
+  | jq 'del(.metadata.namespace,
+            .metadata.resourceVersion,
+            .metadata.uid,
+            .metadata.creationTimestamp,
+            .metadata.managedFields,
+            .metadata.ownerReferences,
+            .metadata.annotations."kubectl.kubernetes.io/last-applied-configuration")
+        | .metadata.namespace = "keycloak26"' \
+  | kubectl apply -f -
+```
+
+Verify the copied secret:
+
+```bash
+kubectl get secret keycloak-client-secrets -n keycloak26
+```
+
+> **Note:** Retain the existing secret in the `keycloak`
+> namespace to support existing MOSIP services and rollback.
+> Ensure the imported Keycloak client credentials match
+> the existing Kubernetes client secrets.
 
 ## Step 3: Disable existing Keycloak 16
 
@@ -250,7 +278,13 @@ The script creates the `openid` client scope if it does not exist, assigns it as
 
 The script can be executed multiple times without duplicating existing client scope assignments.
 
-## Step 6: Verify the migration
+## Step 6: Restart MOSIP application pods
+
+After completing the Keycloak migration, perform a rolling restart of the MOSIP application pods as a precautionary measure to refresh cached tokens and authentication configurations.
+
+> **Note:** Restarting infrastructure components such as PostgreSQL, Kafka and SoftHSM is not required.
+
+## Step 7: Verify the migration
 
 After completing the migration, verify the following:
 
@@ -267,7 +301,7 @@ After completing the migration, verify the following:
 - [ ] MOSIP services are communicating successfully.
 - [ ] Custom themes and authorization policies are compatible.
 
-## Step 7: Rollback (if required)
+## Step 8: Rollback (if required)
 
 If any critical issues occur, disable the Keycloak 26 Gateway.
 
