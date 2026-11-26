@@ -278,13 +278,71 @@ The script creates the `openid` client scope if it does not exist, assigns it as
 
 The script can be executed multiple times without duplicating existing client scope assignments.
 
-## Step 6: Restart MOSIP application pods
+## Step 6: Update Keycloak ConfigMaps and Secrets
+
+update the Keycloak Related ConfigMaps and Secrets across all applicable namespaces.
+
+### 6.1 Update the keycloak-host ConfigMaps
+
+Identify all namespaces containing the `keycloak-host` ConfigMap.
+
+```bash
+kubectl get cm -A | grep keycloak-host
+```
+
+Update the following keys to point to the newly deployed Keycloak 26 service:
+
+- `keycloak-internal-host`
+- `keycloak-internal-service-url`
+- `keycloak-internal-url`
+
+Replace `keycloak.keycloak` with `keycloak.keycloak26`
+in all applicable ConfigMaps.
+
+The external Keycloak URL remains unchanged.
+
+### 6.2 Update the Keycloak Secrets
+
+Identify all namespaces containing the `keycloak` Secret.
+
+```bash
+kubectl get secrets -A | awk '$2 == "keycloak"'
+```
+
+Update the existing `keycloak` Secret in all applicable MOSIP
+application namespaces with the corresponding credentials from
+the newly deployed Keycloak 26 (`keycloak26` namespace).
+
+### 6.3 Copy the keycloak-client-secrets Secret
+
+Copy the existing `keycloak-client-secrets` Secret from the
+`keycloak` namespace to the newly deployed `keycloak26` namespace.
+
+```bash
+kubectl get secret keycloak-client-secrets -n keycloak -o json \
+  | jq 'del(.metadata) |
+    .metadata = {
+      "name": "keycloak-client-secrets",
+      "namespace": "keycloak26"
+    }' \
+  | kubectl apply -f -
+```
+
+Verify the copied Secret.
+
+```bash
+kubectl get secret keycloak-client-secrets -n keycloak26
+```
+
+> **Note:** Back up the existing ConfigMaps and Secrets before making any changes. Retain the original Keycloak namespace, ConfigMaps and Secrets for rollback.
+
+## Step 7: Restart MOSIP application pods
 
 After completing the Keycloak migration, perform a rolling restart of the MOSIP application pods as a precautionary measure to refresh cached tokens and authentication configurations.
 
 > **Note:** Restarting infrastructure components such as PostgreSQL, Kafka and SoftHSM is not required.
 
-## Step 7: Verify the migration
+## Step 8: Verify the migration
 
 After completing the migration, verify the following:
 
@@ -299,11 +357,12 @@ After completing the migration, verify the following:
 - [ ] Existing user login is working.
 - [ ] MOSIP AuthManager and UserInfo endpoint are working.
 - [ ] MOSIP services are communicating successfully.
-- [ ] Custom themes and authorization policies are compatible.
 
-## Step 8: Rollback (if required)
+## Step 9: Rollback from Keycloak 26 to Keycloak 16 (if required)
 
-If any critical issues occur, disable the Keycloak 26 Gateway.
+If any critical issues occur after the migration, follow the below steps to restore the existing Keycloak 16 environment.
+
+### 9.1 Disable the Keycloak 26 Gateway
 
 ```bash
 kubectl patch gateway keycloak -n keycloak26 \
@@ -311,13 +370,19 @@ kubectl patch gateway keycloak -n keycloak26 \
   -p '{"spec":{"selector":{"istio":"ingressgateway-disabled"}}}'
 ```
 
-Scale up the existing Keycloak 16:
+### 9.2 Scale up Keycloak 16
 
 ```bash
 kubectl scale statefulset keycloak -n keycloak --replicas=1
 ```
 
-Once the pods are ready, restore the existing Gateway selector:
+Verify that the Keycloak 16 pods are ready.
+
+```bash
+kubectl rollout status statefulset/keycloak -n keycloak
+```
+
+### 9.3 Restore the Keycloak 16 Gateway
 
 ```bash
 kubectl patch gateway keycloak -n keycloak \
@@ -325,5 +390,25 @@ kubectl patch gateway keycloak -n keycloak \
   -p '{"spec":{"selector":{"istio":"ingressgateway-internal"}}}'
 ```
 
-Verify the Keycloak URL and MOSIP service functionality.
+### 9.4 Restore Keycloak ConfigMaps and Secrets
 
+- Restore the backed-up `keycloak-host` ConfigMaps across all
+  applicable namespaces.
+- Ensure the internal Keycloak hostname points back to
+  `keycloak.keycloak` instead of `keycloak.keycloak26`.
+- Restore the backed-up `keycloak` Secrets across all
+  applicable namespaces.
+- Ensure the existing `keycloak-client-secrets` Secret matches
+  the Keycloak 16 client credentials.
+
+### 9.5 Restart MOSIP application pods
+
+Perform a rolling restart of the affected MOSIP application pods
+to load the restored Keycloak configurations and credentials.
+
+### 9.6 Verify the rollback
+
+- Verify that the Keycloak 16 pods are running.
+- Verify that the existing Keycloak URL is accessible.
+- Verify user login and client authentication.
+- Verify MOSIP application pods and service functionality.
