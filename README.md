@@ -342,18 +342,20 @@ After completing the Keycloak migration, perform a rolling restart of the MOSIP 
 
 > **Note:** Restarting infrastructure components such as PostgreSQL, Kafka and SoftHSM is not required.
 
-## Step 8: Verify the migration
+## Step 8: Post-Migration Validation
 
-After completing the migration, verify the following:
+After completing the migration, log in to the Keycloak 26 Admin Console
+and cross-check the Roles and Service Account Roles for each client
+against Keycloak 16 to ensure they have been migrated successfully.
 
 **Verification checklist**
 
 - [ ] Keycloak 26 pods are running.
 - [ ] Existing Keycloak URL is accessible.
-- [ ] MOSIP realm and users are available.
-- [ ] Clients, client secrets and role mappings are retained.
-- [ ] Service accounts are available.
-- [ ] OpenID client scope is configured as Default.
+- [ ] All migrated realms and users are available.
+- [ ] Clients and client secrets are retained.
+- [ ] Roles and Service Account Roles for each client are retained.
+- [ ] OpenID client scope is configured as Default for applicable clients.
 - [ ] Existing user login is working.
 - [ ] MOSIP AuthManager and UserInfo endpoint are working.
 - [ ] MOSIP services are communicating successfully.
